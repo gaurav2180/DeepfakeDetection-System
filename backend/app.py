@@ -8,6 +8,9 @@ import os
 from werkzeug.utils import secure_filename
 import time
 import traceback
+import uuid
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
 
@@ -20,7 +23,7 @@ CORS(app, resources={
 })
 
 print("=" * 60)
-print("🎯 ML Model)
+print("🎯 ML Model")
 print("⚠️  Low confidence = FAKE")
 print("=" * 60)
 
@@ -34,6 +37,13 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 pretrained_model = None
 pretrained_processor = None
 device = None
+
+# Background job management
+MAX_WORKERS = 2
+JOB_TTL_SECONDS = 60 * 60
+executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
+jobs = {}
+jobs_lock = threading.Lock()
 
 def load_pretrained_model():
     """Load ML model"""
@@ -91,7 +101,7 @@ def analyze_image(image):
         inputs = {k: v.to(device) for k, v in inputs.items()}
         
         # Predict
-        with torch.no_grad():
+        with torch.inference_mode():
             outputs = pretrained_model(**inputs)
             logits = outputs.logits
             probs = torch.nn.functional.softmax(logits, dim=-1)
@@ -124,6 +134,74 @@ def analyze_image(image):
     except Exception as e:
         print(f"⚠️ ML frame analysis error: {e}")
         return None, None, None, None
+
+def analyze_images_batch(images):
+    """Analyze multiple frames with ML (batched for speed)"""
+    if pretrained_model is None or pretrained_processor is None:
+        return []
+
+    try:
+        pil_images = []
+        for image in images:
+            if isinstance(image, np.ndarray):
+                pil_images.append(Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB)))
+            else:
+                pil_images.append(image)
+
+        inputs = pretrained_processor(images=pil_images, return_tensors="pt")
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+
+        with torch.inference_mode():
+            outputs = pretrained_model(**inputs)
+            logits = outputs.logits
+            probs = torch.nn.functional.softmax(logits, dim=-1)
+
+        probs_list = probs.cpu().numpy()
+        labels = pretrained_model.config.id2label
+        label_0 = str(labels[0]).lower()
+        fake_first = 'fake' in label_0
+
+        results = []
+        for row in probs_list:
+            if fake_first:
+                fake_prob = float(row[0])
+                real_prob = float(row[1])
+            else:
+                real_prob = float(row[0])
+                fake_prob = float(row[1])
+
+            if real_prob > fake_prob:
+                prediction = 'real'
+                confidence = real_prob
+            else:
+                prediction = 'deepfake'
+                confidence = fake_prob
+
+            results.append((prediction, confidence, real_prob, fake_prob))
+
+        return results
+
+    except Exception as e:
+        print(f"⚠️ ML batch analysis error: {e}")
+        return []
+
+def determine_num_frames(total_frames, fps):
+    if total_frames <= 0:
+        return 0
+    duration = total_frames / fps if fps > 0 else 0
+    if duration <= 5:
+        target = 8
+    elif duration <= 15:
+        target = 12
+    elif duration <= 30:
+        target = 16
+    else:
+        target = 20
+    if total_frames < target:
+        return total_frames
+    if total_frames >= 6 and target < 6:
+        return 6
+    return target
 
 def calculate_heuristic_score(video_path):
     """Calculate heuristic score for video"""
@@ -206,6 +284,7 @@ def calculate_heuristic_score(video_path):
     score = max(0, score)
     
     metadata = {
+        'total_frames': total_frames,
         'resolution': f"{width}x{height}",
         'file_size_mb': round(file_size_mb, 2),
         'fps': round(fps, 1),
@@ -216,7 +295,7 @@ def calculate_heuristic_score(video_path):
     
     return score, warnings, red_flags, metadata
 
-def analyze_video_hybrid(video_path, num_frames=10):
+def analyze_video_hybrid(video_path, num_frames=None):
     """HYBRID: Heuristics + ML Analysis - STRICT MODE (Low confidence = FAKE)"""
     
     print(f"\n{'='*60}")
@@ -267,32 +346,42 @@ def analyze_video_hybrid(video_path, num_frames=10):
         cap.release()
         return 'deepfake', 0.60, 0.40, 0.60, h_score, warnings, metadata, "Error - Default Fake"
     
+    if num_frames is None:
+        num_frames = determine_num_frames(total_frames, metadata.get('fps', 0))
+
     frame_indices = np.linspace(0, total_frames - 1, min(num_frames, total_frames), dtype=int)
     predictions = []
-    
+
     print(f"   Analyzing {len(frame_indices)} frames...")
-    
-    for i, frame_idx in enumerate(frame_indices):
+
+    frames = []
+    for frame_idx in frame_indices:
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
         ret, frame = cap.read()
         
         if not ret:
             continue
-        
-        pred, conf, real_prob, fake_prob = analyze_image(frame)
-        
-        if pred is not None:
+
+        frames.append(frame)
+    
+    cap.release()
+
+    batch_size = 4
+    for i in range(0, len(frames), batch_size):
+        batch = frames[i:i + batch_size]
+        batch_results = analyze_images_batch(batch)
+        for result in batch_results:
+            pred, conf, real_prob, fake_prob = result
             predictions.append({
                 'prediction': pred,
                 'confidence': conf,
                 'real_prob': real_prob,
                 'fake_prob': fake_prob
             })
-        
-        if (i + 1) % 3 == 0:
-            print(f"      Frame {i + 1}/{len(frame_indices)}...")
-    
-    cap.release()
+
+        if (i // batch_size + 1) % 1 == 0:
+            processed = min(i + batch_size, len(frames))
+            print(f"      Frame {processed}/{len(frames)}...")
     
     if not predictions:
         print(f"   ⚠️ ML analysis failed")
@@ -381,6 +470,99 @@ def analyze_video_hybrid(video_path, num_frames=10):
     
     return final_pred, final_conf, avg_real, avg_fake, h_score, red_flags + warnings, metadata, decision_method
 
+def format_response_data(filename, prediction, confidence, real_score, fake_score, h_score, flags, metadata, method, processing_time):
+    if prediction == 'deepfake':
+        if confidence > 0.85:
+            risk_level = 'high'
+            message = 'ðŸš¨ High confidence deepfake detected'
+        elif confidence > 0.70:
+            risk_level = 'medium'
+            message = 'âš ï¸ Likely a deepfake'
+        else:
+            risk_level = 'low'
+            message = 'ðŸ¤” Possible deepfake (low confidence)'
+    else:
+        if confidence > 0.85:
+            risk_level = 'authentic_high'
+            message = 'âœ… High confidence authentic video'
+        elif confidence > 0.75:
+            risk_level = 'authentic_medium'
+            message = 'âœ… Likely authentic'
+        else:
+            risk_level = 'authentic_low'
+            message = 'âœ… Possibly authentic (medium confidence)'
+
+    return {
+        'status': 'completed',
+        'filename': filename,
+        'duration': round(metadata.get('duration', 0), 2),
+        'total_frames': metadata.get('total_frames', 0),
+        'prediction': prediction,
+        'confidence': round(confidence, 4),
+        'risk_level': risk_level,
+        'message': message,
+        'processing_time': round(processing_time, 2),
+        'scores': {
+            'real': round(real_score, 4),
+            'fake': round(fake_score, 4)
+        },
+        'heuristic_analysis': {
+            'score': h_score,
+            'warnings': flags,
+            'metadata': metadata
+        },
+        'decision_method': method,
+        'model_info': {
+            'type': 'Hybrid (ML + Heuristics) - STRICT MODE',
+            'ml_model': 'dima806/deepfake_vs_real_image_detection' if pretrained_model else 'Not loaded',
+            'source': 'Hugging Face + Custom Logic',
+            'mode': 'Low confidence = FAKE'
+        }
+    }
+
+def cleanup_jobs():
+    now = time.time()
+    expired = []
+    with jobs_lock:
+        for job_id, job in jobs.items():
+            if now - job.get('updated_at', now) > JOB_TTL_SECONDS:
+                expired.append(job_id)
+        for job_id in expired:
+            jobs.pop(job_id, None)
+
+def run_analysis_job(job_id, filepath, filename):
+    with jobs_lock:
+        job = jobs.get(job_id, {})
+        job['status'] = 'running'
+        job['updated_at'] = time.time()
+        jobs[job_id] = job
+
+    try:
+        start_time = time.time()
+        prediction, confidence, real_score, fake_score, h_score, flags, metadata, method = \
+            analyze_video_hybrid(filepath, num_frames=None)
+        processing_time = time.time() - start_time
+
+        response_data = format_response_data(
+            filename, prediction, confidence, real_score, fake_score, h_score, flags, metadata, method, processing_time
+        )
+
+        with jobs_lock:
+            jobs[job_id] = {
+                'status': 'completed',
+                'updated_at': time.time(),
+                'result': response_data,
+                'filename': filename
+            }
+    except Exception as e:
+        with jobs_lock:
+            jobs[job_id] = {
+                'status': 'failed',
+                'updated_at': time.time(),
+                'error': str(e),
+                'filename': filename
+            }
+
 # ===== API ROUTES =====
 
 @app.route('/api/health', methods=['GET'])
@@ -435,82 +617,28 @@ def analyze_video_route(filename):
         response = jsonify({'status': 'ok'})
         response.headers.add('Access-Control-Allow-Origin', '*')
         return response
-    
+
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    
+
     if not os.path.exists(filepath):
         return jsonify({'error': 'Video not found'}), 404
-    
+
     try:
         print(f"\n{'='*60}")
         print(f"🎬 ANALYZING: {filename}")
         print(f"{'='*60}")
-        
+
         start_time = time.time()
-        
-        # Run hybrid analysis
+
         prediction, confidence, real_score, fake_score, h_score, flags, metadata, method = \
-            analyze_video_hybrid(filepath, num_frames=10)
-        
+            analyze_video_hybrid(filepath, num_frames=None)
+
         processing_time = time.time() - start_time
-        
-        # Get video info
-        cap = cv2.VideoCapture(filepath)
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        duration = frame_count / fps if fps > 0 else 0
-        cap.release()
-        
-        # Determine risk level and message
-        if prediction == 'deepfake':
-            if confidence > 0.85:
-                risk_level = 'high'
-                message = '🚨 High confidence deepfake detected'
-            elif confidence > 0.70:
-                risk_level = 'medium'
-                message = '⚠️ Likely a deepfake'
-            else:
-                risk_level = 'low'
-                message = '🤔 Possible deepfake (low confidence)'
-        else:
-            if confidence > 0.85:
-                risk_level = 'authentic_high'
-                message = '✅ High confidence authentic video'
-            elif confidence > 0.75:
-                risk_level = 'authentic_medium'
-                message = '✅ Likely authentic'
-            else:
-                risk_level = 'authentic_low'
-                message = '✅ Possibly authentic (medium confidence)'
-        
-        response_data = {
-            'status': 'completed',
-            'filename': filename,
-            'duration': round(duration, 2),
-            'total_frames': frame_count,
-            'prediction': prediction,
-            'confidence': round(confidence, 4),
-            'risk_level': risk_level,
-            'message': message,
-            'processing_time': round(processing_time, 2),
-            'scores': {
-                'real': round(real_score, 4),
-                'fake': round(fake_score, 4)
-            },
-            'heuristic_analysis': {
-                'score': h_score,
-                'warnings': flags,
-                'metadata': metadata
-            },
-            'decision_method': method,
-            'model_info': {
-                'type': 'Hybrid (ML + Heuristics) - STRICT MODE',
-                'ml_model': 'dima806/deepfake_vs_real_image_detection' if pretrained_model else 'Not loaded',
-                'source': 'Hugging Face + Custom Logic',
-                'mode': 'Low confidence = FAKE'
-            }
-        }
-        
+
+        response_data = format_response_data(
+            filename, prediction, confidence, real_score, fake_score, h_score, flags, metadata, method, processing_time
+        )
+
         print(f"\n{'='*60}")
         print(f"✅ FINAL RESULT: {prediction.upper()}")
         print(f"📊 Confidence: {confidence:.2%}")
@@ -518,15 +646,15 @@ def analyze_video_route(filename):
         print(f"🧠 Method: {method}")
         print(f"⏱️  Time: {processing_time:.1f}s")
         print(f"{'='*60}\n")
-        
+
         response = jsonify(response_data)
         response.headers.add('Access-Control-Allow-Origin', '*')
         return response
-        
+
     except Exception as e:
         print(f"\n❌ ERROR: {e}")
         traceback.print_exc()
-        
+
         error_response = jsonify({
             'error': str(e),
             'status': 'failed'
@@ -534,6 +662,61 @@ def analyze_video_route(filename):
         error_response.headers.add('Access-Control-Allow-Origin', '*')
         return error_response, 500
 
+@app.route('/api/analyze_async/<filename>', methods=['POST', 'OPTIONS'])
+def analyze_video_async_route(filename):
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response
+
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'Video not found'}), 404
+
+    cleanup_jobs()
+
+    job_id = uuid.uuid4().hex
+    with jobs_lock:
+        jobs[job_id] = {
+            'status': 'queued',
+            'created_at': time.time(),
+            'updated_at': time.time(),
+            'filename': filename
+        }
+
+    executor.submit(run_analysis_job, job_id, filepath, filename)
+
+    response = jsonify({
+        'status': 'queued',
+        'job_id': job_id,
+        'filename': filename
+    })
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    return response
+
+@app.route('/api/analyze_status/<job_id>', methods=['GET'])
+def analyze_status_route(job_id):
+    cleanup_jobs()
+    with jobs_lock:
+        job = jobs.get(job_id)
+
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+
+    response_data = {
+        'status': job.get('status', 'unknown'),
+        'job_id': job_id,
+        'filename': job.get('filename')
+    }
+
+    if job.get('status') == 'completed':
+        response_data['result'] = job.get('result')
+    elif job.get('status') == 'failed':
+        response_data['error'] = job.get('error', 'Unknown error')
+
+    response = jsonify(response_data)
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    return response
 # ===== STARTUP =====
 if __name__ == '__main__':
    
@@ -550,3 +733,4 @@ if __name__ == '__main__':
     print("="*60 + "\n")
     
     app.run(debug=False, port=5000, host='127.0.0.1', threaded=True)
+
