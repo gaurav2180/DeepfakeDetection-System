@@ -329,9 +329,15 @@ def analyze_video_hybrid(video_path, num_frames=None):
         print(f"\n🚨 DECISION: OBVIOUS DEEPFAKE ")
         return 'deepfake', 0.92, 0.08, 0.92, h_score, red_flags + warnings, metadata, "Heuristics - Obvious Fake"
 
-    # Fast path: strong heuristics already flagged the video as suspicious.
-    # Skip expensive ML frame inference to reduce end-to-end latency.
-    if red_flags:
+    # Fast path only for severe heuristic signals.
+    # This avoids skipping ML for videos with just one mild red flag.
+    critical_flags = [f for f in red_flags if "CRITICAL" in f.upper()]
+    severe_fast_path = (
+        (len(critical_flags) >= 1 and h_score < 50) or
+        (len(red_flags) >= 2 and h_score < 60) or
+        (h_score < 35)
+    )
+    if severe_fast_path:
         print(f"\n🚨 DECISION: RED FLAGS FAST PATH (skip ML)")
         return 'deepfake', 0.85, 0.15, 0.85, h_score, red_flags + warnings, metadata, "Red Flags - Fast Path"
 
