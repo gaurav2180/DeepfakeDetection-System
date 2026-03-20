@@ -19,6 +19,10 @@ body {
   overflow-x: hidden;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 .app {
   min-height: 100vh;
   background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
@@ -90,6 +94,10 @@ body {
   font-weight: 500;
   position: relative;
   padding: 0.5rem 0;
+  background: transparent;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
 }
 
 .nav-link::before {
@@ -148,6 +156,10 @@ body {
   min-height: 80vh;
   display: flex;
   align-items: center;
+}
+
+.hero-first-appearance {
+  padding-top: 7rem;
 }
 
 .hero::before {
@@ -257,6 +269,7 @@ body {
   overflow: hidden;
   z-index: 10;
   white-space: nowrap;
+  text-decoration: none;
 }
 
 .btn-primary {
@@ -299,6 +312,125 @@ body {
 .dashboard {
   padding: 3rem 2rem;
   animation: fadeInUp 1s ease-out;
+}
+
+/* ===== CONTENT SECTIONS ===== */
+.info-section {
+  padding: 7rem 2rem 2.2rem;
+  min-height: calc(100vh - 140px);
+  display: flex;
+  align-items: flex-start;
+}
+
+.info-section-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+  background: rgba(20, 20, 20, 0.72);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.4rem;
+  padding: 1.5rem;
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.22);
+}
+
+.info-section-head h2 {
+  font-size: 1.9rem;
+  font-weight: 800;
+  margin-bottom: 0.45rem;
+  background: linear-gradient(135deg, #ffffff, #a5b4fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.info-section-head p {
+  color: rgba(255, 255, 255, 0.68);
+  margin-bottom: 1.2rem;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.9rem;
+}
+
+.info-card {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(145deg, rgba(99, 102, 241, 0.08), rgba(15, 15, 22, 0.88));
+  border-radius: 0.95rem;
+  padding: 1rem;
+}
+
+.info-card h3 {
+  font-size: 1rem;
+  margin-bottom: 0.35rem;
+  color: #eef2ff;
+}
+
+.info-card p {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.doc-steps {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.doc-step {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 0.8rem;
+  align-items: start;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.9rem;
+  padding: 0.9rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.doc-step span {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  color: #ffffff;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+}
+
+.doc-step h4 {
+  margin-bottom: 0.2rem;
+  color: #e2e8f0;
+}
+
+.doc-step p {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
+}
+
+.about-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.8rem;
+}
+
+.about-metric {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.9rem;
+  padding: 1rem;
+  background: linear-gradient(145deg, rgba(34, 197, 94, 0.06), rgba(17, 24, 39, 0.86));
+}
+
+.about-metric strong {
+  display: block;
+  color: #f8fafc;
+  margin-bottom: 0.3rem;
+}
+
+.about-metric small {
+  color: rgba(255, 255, 255, 0.68);
 }
 
 .dashboard-container {
@@ -581,6 +713,289 @@ body {
 
 /* ===== RESULTS SECTION ===== */
 .results-section { margin-top: 1rem; }
+
+/* ===== ANALYSIS FREQUENCY ===== */
+.freq-card {
+  background: rgba(20, 20, 30, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.5rem;
+  padding: 1.4rem;
+  margin-bottom: 1.4rem;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.25);
+}
+
+.freq-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.freq-header h3 {
+  font-size: 1.2rem;
+  color: #ffffff;
+}
+
+.freq-header p {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 0.2rem;
+}
+
+.freq-clear-btn {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8fafc;
+  border-radius: 0.7rem;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.freq-clear-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.freq-empty {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 0.85rem;
+  padding: 1rem;
+  color: rgba(255, 255, 255, 0.6);
+  text-align: center;
+  font-size: 0.88rem;
+}
+
+.freq-grid {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 1.2rem;
+}
+
+.freq-donut-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.freq-donut {
+  width: 165px;
+  height: 165px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.freq-donut-center {
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  background: rgba(10, 10, 18, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.freq-donut-center span {
+  font-size: 1.8rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #f8fafc;
+}
+
+.freq-donut-center small {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 0.35rem;
+}
+
+.freq-legend {
+  width: 100%;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.freq-legend-item {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.84rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.freq-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.freq-dot.fake {
+  background: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.65);
+}
+
+.freq-dot.real {
+  background: #22c55e;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.65);
+}
+
+.freq-bars-wrap {
+  display: grid;
+  gap: 1rem;
+}
+
+.freq-bar-row {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.freq-bar-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.freq-bar-head strong {
+  color: #ffffff;
+}
+
+.freq-bar-track {
+  width: 100%;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.freq-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.5s ease;
+}
+
+.freq-bar-fill.fake {
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+}
+
+.freq-bar-fill.real {
+  background: linear-gradient(90deg, #22c55e, #16a34a);
+}
+
+.freq-trend {
+  margin-top: 0.3rem;
+}
+
+.freq-trend-head {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.62);
+  margin-bottom: 0.55rem;
+}
+
+.freq-trend-bars {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 6px;
+}
+
+.freq-trend-bar {
+  height: 38px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.freq-trend-bar.fake {
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.45), rgba(239, 68, 68, 0.16));
+}
+
+.freq-trend-bar.real {
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.45), rgba(34, 197, 94, 0.16));
+}
+
+.freq-line-chart {
+  margin-top: 0.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 14, 28, 0.55);
+  border-radius: 10px;
+  padding: 0.7rem 0.7rem 0.5rem;
+}
+
+.freq-bar-chart {
+  width: 100%;
+  height: 130px;
+  border-radius: 8px;
+  padding: 0.5rem 0.35rem;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.45rem;
+  align-items: end;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent),
+    repeating-linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.06) 0px,
+      rgba(255, 255, 255, 0.06) 1px,
+      transparent 1px,
+      transparent 26px
+    );
+}
+
+.freq-day-group {
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.freq-day-bars {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+}
+
+.freq-day-bar {
+  width: 40%;
+  min-height: 6px;
+  border-radius: 6px 6px 3px 3px;
+}
+
+.freq-day-bar.fake {
+  background: linear-gradient(180deg, #ef4444, #b91c1c);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.25);
+}
+
+.freq-day-bar.real {
+  background: linear-gradient(180deg, #22c55e, #15803d);
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.25);
+}
+
+.freq-chart-labels {
+  margin-top: 0.45rem;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.freq-chart-labels span {
+  font-size: 0.68rem;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.55);
+}
 
 /* ===== NEW UNIFIED RESULT CARD ===== */
 .result-unified-card {
@@ -873,6 +1288,14 @@ body {
   transition: color 0.3s;
 }
 
+.footer-link-btn {
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+}
+
 .footer-link:hover {
   color: #7c3aed;
   text-decoration: underline;
@@ -899,11 +1322,21 @@ body {
 @media (max-width: 768px) {
   .nav-links { display: none; }
   .hero { padding: 4rem 1rem 2rem; min-height: 70vh; }
+  .hero-first-appearance { padding-top: 5rem; }
   .hero-title { font-size: 2.5rem; }
   .hero-buttons { flex-direction: column; align-items: center; }
+  .info-section {
+    padding: 5.8rem 1rem 1.4rem;
+    min-height: calc(100vh - 110px);
+  }
+  .info-grid { grid-template-columns: 1fr; }
+  .about-strip { grid-template-columns: 1fr; }
   .stats-grid { grid-template-columns: 1fr; }
   .rc-scores { grid-template-columns: repeat(3,1fr); }
   .rc-meta-grid { grid-template-columns: 1fr; }
+  .freq-grid { grid-template-columns: 1fr; }
+  .freq-donut-wrap { align-items: flex-start; }
+  .freq-trend-bars { grid-template-columns: repeat(8, 1fr); }
   .footer-inner { flex-direction: column; }
   .footer-right { flex-direction: column; gap: 1.5rem; }
 }
@@ -916,6 +1349,15 @@ body {
   }
   .file-card-mini { max-width: 100%; }
   .rc-scores { grid-template-columns: 1fr 1fr 1fr; }
+  .freq-header { flex-direction: column; }
+  .freq-donut {
+    width: 140px;
+    height: 140px;
+  }
+  .freq-donut-center {
+    width: 95px;
+    height: 95px;
+  }
 }
 
 @media (max-width: 600px) {
@@ -934,6 +1376,52 @@ body {
 
 ::selection { background: rgba(99,102,241,0.3); color: white; }
 ::-moz-selection { background: rgba(99,102,241,0.3); color: white; }
+
+/* ===== REVEAL ON SCROLL ===== */
+.reveal-on-scroll {
+  opacity: 0;
+  transform: translateY(22px) scale(0.99);
+  filter: blur(2px);
+  transition:
+    opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.65s cubic-bezier(0.16, 1, 0.3, 1),
+    filter 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform, filter;
+}
+
+.reveal-on-scroll.revealed {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+}
+
+/* Keep fixed nav visible immediately while still allowing subtle entrance */
+.navbar.reveal-on-scroll {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+  animation: navbarFadeIn 0.45s ease-out;
+}
+
+@keyframes navbarFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-on-scroll {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+    transition: none !important;
+  }
+}
 /* ===== TOOLTIP ===== */
 .rc-scores {
   overflow: visible !important;  /* ← KEY FIX */

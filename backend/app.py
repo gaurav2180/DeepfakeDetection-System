@@ -190,13 +190,13 @@ def determine_num_frames(total_frames, fps):
         return 0
     duration = total_frames / fps if fps > 0 else 0
     if duration <= 5:
-        target = 8
+        target = 6
     elif duration <= 15:
-        target = 12
+        target = 8
     elif duration <= 30:
-        target = 16
+        target = 10
     else:
-        target = 20
+        target = 12
     if total_frames < target:
         return total_frames
     if total_frames >= 6 and target < 6:
@@ -328,7 +328,13 @@ def analyze_video_hybrid(video_path, num_frames=None):
     if h_score < 30:
         print(f"\n🚨 DECISION: OBVIOUS DEEPFAKE ")
         return 'deepfake', 0.92, 0.08, 0.92, h_score, red_flags + warnings, metadata, "Heuristics - Obvious Fake"
-    
+
+    # Fast path: strong heuristics already flagged the video as suspicious.
+    # Skip expensive ML frame inference to reduce end-to-end latency.
+    if red_flags:
+        print(f"\n🚨 DECISION: RED FLAGS FAST PATH (skip ML)")
+        return 'deepfake', 0.85, 0.15, 0.85, h_score, red_flags + warnings, metadata, "Red Flags - Fast Path"
+
     
     if pretrained_model is None:
         print(f"\n⚠️ ML model not available")

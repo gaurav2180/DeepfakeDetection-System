@@ -1,7 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import './App.css';
 import attachedImage from './assets/deepfake-detection-visual.jpg';
+
+const HISTORY_STORAGE_KEY = 'deepfake_analysis_history_v1';
+const MAX_HISTORY_ITEMS = 30;
 
 const App = () => {
   const [file, setFile] = useState(null);
@@ -9,9 +12,73 @@ const App = () => {
   const [analyzing, setAnalyzing] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
+  const [activePage, setActivePage] = useState('home');
+  const [isFirstHomeAppearance, setIsFirstHomeAppearance] = useState(true);
+  const [analysisHistory, setAnalysisHistory] = useState(() => {
+    try {
+      const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_err) {
+      return [];
+    }
+  });
   const [error, setError] = useState('');
   const fileInputRef = useRef(null);
   const resultRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(analysisHistory));
+  }, [analysisHistory]);
+
+  useEffect(() => {
+    const elements = document.querySelectorAll('.reveal-on-scroll');
+    if (!elements.length) return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('revealed');
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.16, rootMargin: '0px 0px -8% 0px' }
+    );
+
+    elements.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [analysisResult, analysisHistory.length, error, uploading, analyzing, activePage]);
+
+  const navigateToPage = (page) => {
+    setActivePage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const openAnalyzer = () => {
+    setActivePage('home');
+    setTimeout(() => {
+      document.getElementById('analyzer')?.scrollIntoView({ behavior: 'smooth' });
+    }, 0);
+  };
+
+  useEffect(() => {
+    if (activePage !== 'home' && isFirstHomeAppearance) {
+      setIsFirstHomeAppearance(false);
+    }
+  }, [activePage, isFirstHomeAppearance]);
+
+  const addToHistory = (result) => {
+    const entry = {
+      id: Date.now(),
+      filename: result.filename || file?.name || 'Unknown',
+      prediction: result.prediction,
+      confidence: result.confidence,
+      createdAt: new Date().toISOString(),
+    };
+    setAnalysisHistory((prev) => [entry, ...prev].slice(0, MAX_HISTORY_ITEMS));
+  };
 
   const handleFileChange = (event) => {
     const selectedFile = event.target.files[0];
@@ -30,7 +97,7 @@ const App = () => {
   const pollAnalysisResult = async (jobId) => {
     const start = Date.now();
     const timeoutMs = 5 * 60 * 1000;
-    const intervalMs = 1000;
+    const intervalMs = 2500;
 
     while (Date.now() - start < timeoutMs) {
       const statusResponse = await axios.get(
@@ -67,6 +134,7 @@ const App = () => {
       );
       const result = await pollAnalysisResult(analyzeResponse.data.job_id);
       setAnalysisResult(result);
+      addToHistory(result);
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth' }), 200);
     } catch (err) {
       setError(err.response?.data?.error || err.message || 'Analysis failed. Please try again.');
@@ -82,6 +150,172 @@ const App = () => {
     setAnalysisResult(null);
     setError('');
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const AnalysisFrequencyGraph = ({ history }) => {
+    const stats = useMemo(() => {
+      const total = history.length;
+      const fake = history.filter((item) => item.prediction === 'deepfake').length;
+      const real = total - fake;
+      const fakePct = total > 0 ? Math.round((fake / total) * 100) : 0;
+      const realPct = total > 0 ? 100 - fakePct : 0;
+      return { total, fake, real, fakePct, realPct };
+    }, [history]);
+
+    const recentItems = history.slice(0, 12).reverse();
+    const timeline = useMemo(() => {
+      const now = new Date();
+      const labels = [];
+      const buckets = [];
+
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(now.getDate() - i);
+        const key = d.toISOString().slice(0, 10);
+        const label = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        labels.push(label);
+        buckets.push({ key, fake: 0, real: 0 });
+      }
+
+      const map = new Map(buckets.map((b) => [b.key, b]));
+      history.forEach((item) => {
+        const key = (item.createdAt || '').slice(0, 10);
+        const b = map.get(key);
+        if (!b) return;
+        if (item.prediction === 'deepfake') b.fake += 1;
+        else b.real += 1;
+      });
+
+      const maxY = Math.max(1, ...buckets.map((b) => b.fake), ...buckets.map((b) => b.real));
+
+      return {
+        labels,
+        buckets,
+        maxY,
+      };
+    }, [history]);
+
+    return (
+      <div className="freq-card reveal-on-scroll">
+        <div className="freq-header">
+          <div>
+            <h3>Analysis Frequency</h3>
+            <p>Distribution of fake vs real detections</p>
+          </div>
+          {stats.total > 0 && (
+            <button
+              className="freq-clear-btn"
+              onClick={() => setAnalysisHistory([])}
+            >
+              Clear History
+            </button>
+          )}
+        </div>
+
+        {stats.total === 0 ? (
+          <div className="freq-empty">
+            No data yet. Analyze videos to build the frequency graph.
+          </div>
+        ) : (
+          <div className="freq-grid">
+            <div className="freq-donut-wrap">
+              <div
+                className="freq-donut"
+                style={{
+                  background: `conic-gradient(#ef4444 0% ${stats.fakePct}%, #22c55e ${stats.fakePct}% 100%)`,
+                }}
+              >
+                <div className="freq-donut-center">
+                  <span>{stats.total}</span>
+                  <small>Analyses</small>
+                </div>
+              </div>
+
+              <div className="freq-legend">
+                <div className="freq-legend-item">
+                  <span className="freq-dot fake"></span>
+                  <span>Deepfake</span>
+                  <strong>{stats.fake}</strong>
+                </div>
+                <div className="freq-legend-item">
+                  <span className="freq-dot real"></span>
+                  <span>Real</span>
+                  <strong>{stats.real}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="freq-bars-wrap">
+              <div className="freq-bar-row">
+                <div className="freq-bar-head">
+                  <span>Deepfake Frequency</span>
+                  <strong>{stats.fakePct}%</strong>
+                </div>
+                <div className="freq-bar-track">
+                  <div
+                    className="freq-bar-fill fake"
+                    style={{ width: `${stats.fakePct}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              <div className="freq-bar-row">
+                <div className="freq-bar-head">
+                  <span>Real Frequency</span>
+                  <strong>{stats.realPct}%</strong>
+                </div>
+                <div className="freq-bar-track">
+                  <div
+                    className="freq-bar-fill real"
+                    style={{ width: `${stats.realPct}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              <div className="freq-trend">
+                <div className="freq-trend-head">Recent Detection Trend</div>
+                <div className="freq-trend-bars">
+                  {recentItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`freq-trend-bar ${item.prediction === 'deepfake' ? 'fake' : 'real'}`}
+                      title={`${item.filename} - ${item.prediction}`}
+                    ></div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="freq-line-chart">
+                <div className="freq-trend-head">7 Day Frequency Graph</div>
+                <div className="freq-bar-chart">
+                  {timeline.buckets.map((b, idx) => (
+                    <div className="freq-day-group" key={`${b.key}-${idx}`}>
+                      <div className="freq-day-bars">
+                        <div
+                          className="freq-day-bar real"
+                          style={{ height: `${Math.max(6, Math.round((b.real / timeline.maxY) * 100))}%` }}
+                          title={`Real: ${b.real}`}
+                        ></div>
+                        <div
+                          className="freq-day-bar fake"
+                          style={{ height: `${Math.max(6, Math.round((b.fake / timeline.maxY) * 100))}%` }}
+                          title={`Deepfake: ${b.fake}`}
+                        ></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="freq-chart-labels">
+                  {timeline.labels.map((label) => (
+                    <span key={label}>{label}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const ResultCard = ({ result }) => {
@@ -218,25 +452,53 @@ const App = () => {
     <div className="app">
 
       {/* NAVBAR */}
-      <nav className="navbar">
+      <nav className="navbar reveal-on-scroll">
         <div className="nav-container">
           <div className="nav-logo">
             <span className="logo-text">DeepFake AI</span>
           </div>
           <div className="nav-links">
-            <a href="#" className="nav-link active">Home</a>
-            <a href="#" className="nav-link">Features</a>
-            <a href="#" className="nav-link">Documentation</a>
-            <a href="#" className="nav-link">About</a>
+            <button
+              type="button"
+              className={`nav-link ${activePage === 'home' ? 'active' : ''}`}
+              onClick={() => navigateToPage('home')}
+            >
+              Home
+            </button>
+            <button
+              type="button"
+              className={`nav-link ${activePage === 'features' ? 'active' : ''}`}
+              onClick={() => navigateToPage('features')}
+            >
+              Features
+            </button>
+            <button
+              type="button"
+              className={`nav-link ${activePage === 'documentation' ? 'active' : ''}`}
+              onClick={() => navigateToPage('documentation')}
+            >
+              Documentation
+            </button>
+            <button
+              type="button"
+              className={`nav-link ${activePage === 'about' ? 'active' : ''}`}
+              onClick={() => navigateToPage('about')}
+            >
+              About
+            </button>
           </div>
-          <button className="nav-cta">Start Analysis</button>
+          <button type="button" className="nav-cta" onClick={openAnalyzer}>Start Analysis</button>
         </div>
       </nav>
 
       {/* HERO */}
-      <section className="hero">
+      {activePage === 'home' && (
+      <section
+        id="home"
+        className={`hero reveal-on-scroll ${isFirstHomeAppearance ? 'hero-first-appearance' : ''}`}
+      >
         <div className="hero-container">
-          <div className="hero-content">
+          <div className="hero-content reveal-on-scroll">
             <h1 className="hero-title">
               The Smarter Way<br />to Detect Deepfakes
             </h1>
@@ -247,31 +509,135 @@ const App = () => {
             <div className="hero-buttons">
               <button
                 className="btn-primary"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={openAnalyzer}
               >
                 Start AI Analysis
               </button>
-              <button className="btn-secondary">Get Demo</button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => navigateToPage('documentation')}
+              >
+                Get Demo
+              </button>
             </div>
           </div>
-          <div className="hero-image">
+          <div className="hero-image reveal-on-scroll">
             <img src={attachedImage} alt="Deepfake Detection Visual" />
           </div>
         </div>
       </section>
+      )}
+
+      {activePage === 'features' && (
+      <section id="features" className="info-section reveal-on-scroll">
+        <div className="info-section-inner">
+          <div className="info-section-head reveal-on-scroll">
+            <h2>Features</h2>
+            <p>Detection tools designed for fast validation and practical risk analysis.</p>
+          </div>
+          <div className="info-grid">
+            <article className="info-card reveal-on-scroll">
+              <h3>Hybrid Detection Pipeline</h3>
+              <p>Combines learned visual patterns with heuristic checks for stronger reliability than one-method detectors.</p>
+            </article>
+            <article className="info-card reveal-on-scroll">
+              <h3>Frequency Intelligence</h3>
+              <p>Tracks fake versus real detection frequency over time, helping teams quickly spot suspicious content surges.</p>
+            </article>
+            <article className="info-card reveal-on-scroll">
+              <h3>Asynchronous Processing</h3>
+              <p>Keeps the interface responsive with queued analysis and status polling for smooth user experience.</p>
+            </article>
+            <article className="info-card reveal-on-scroll">
+              <h3>Transparent Scoring</h3>
+              <p>Displays confidence, real/fake scores, integrity score, and warning signals so decisions are auditable.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+      )}
+
+      {activePage === 'documentation' && (
+      <section id="documentation" className="info-section reveal-on-scroll">
+        <div className="info-section-inner">
+          <div className="info-section-head reveal-on-scroll">
+            <h2>Documentation</h2>
+            <p>Quick guide to operate the detector workflow from upload to result interpretation.</p>
+          </div>
+          <div className="doc-steps">
+            <div className="doc-step reveal-on-scroll">
+              <span>1</span>
+              <div>
+                <h4>Upload Video</h4>
+                <p>Select a supported format (`MP4`, `AVI`, `MOV`, `MKV`) up to `100MB`.</p>
+              </div>
+            </div>
+            <div className="doc-step reveal-on-scroll">
+              <span>2</span>
+              <div>
+                <h4>Run Analysis</h4>
+                <p>Analysis executes in background and returns prediction, confidence, and metadata summary.</p>
+              </div>
+            </div>
+            <div className="doc-step reveal-on-scroll">
+              <span>3</span>
+              <div>
+                <h4>Review Risk Indicators</h4>
+                <p>Use confidence bands, integrity score, and suspicious-pattern warnings for decision support.</p>
+              </div>
+            </div>
+            <div className="doc-step reveal-on-scroll">
+              <span>4</span>
+              <div>
+                <h4>Monitor Frequency Graph</h4>
+                <p>Observe fake vs real trends to identify shifts in incoming content quality.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      )}
+
+      {activePage === 'about' && (
+      <section id="about" className="info-section reveal-on-scroll">
+        <div className="info-section-inner">
+          <div className="info-section-head reveal-on-scroll">
+            <h2>About</h2>
+            <p>DeepFake AI helps teams verify media authenticity with interpretable AI outputs and fast operational flow.</p>
+          </div>
+          <div className="about-strip reveal-on-scroll">
+            <div className="about-metric">
+              <strong>Detection Engine</strong>
+              <small>ML Decisioning</small>
+            </div>
+            <div className="about-metric">
+              <strong>Real-time UX</strong>
+              <small>Async Backend + Smooth Frontend</small>
+            </div>
+            <div className="about-metric">
+              <strong>Actionable Output</strong>
+              <small>Risk Tier + Explainable Signals</small>
+            </div>
+          </div>
+        </div>
+      </section>
+      )}
 
       {/* DASHBOARD */}
-      <section className="dashboard">
+      {activePage === 'home' && (
+      <section id="analyzer" className="dashboard reveal-on-scroll">
         <div className="dashboard-container">
-          <div className="main-content">
+          <div className="main-content reveal-on-scroll">
             <div className="task-manager">
               {/* <h2 className="section-title">Deepfake Detector</h2> */}
+              <AnalysisFrequencyGraph history={analysisHistory} />
 
-             
+              
               {/* UPLOAD — hidden when result shown */}
               {!analysisResult && (
-                <div className="upload-section">
-                  <div className="upload-card">
+                <div className="upload-section reveal-on-scroll">
+                  <div className="upload-card reveal-on-scroll">
                     <div className="upload-icon">📁</div>
                     <h3>Upload Video for AI Analysis</h3>
                     <p>Advanced neural networks will analyze your video for deepfake patterns</p>
@@ -323,7 +689,7 @@ const App = () => {
 
               {/* LOADING */}
               {(uploading || analyzing) && (
-                <div className="loading-section">
+                <div className="loading-section reveal-on-scroll">
                   <div className="loading-spinner"></div>
                   <p style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.4rem' }}>
                     {uploading ? '⬆️ Uploading video...' : '🤖 AI is analyzing frames...'}
@@ -338,7 +704,7 @@ const App = () => {
 
               {/* ERROR */}
               {error && (
-                <div className="error-card">
+                <div className="error-card reveal-on-scroll">
                   <div className="error-icon">⚠️</div>
                   <div className="error-content">
                     <h4>Analysis Error</h4>
@@ -349,7 +715,7 @@ const App = () => {
 
               {/* RESULT */}
               {analysisResult && (
-                <div ref={resultRef} className="results-section">
+                <div ref={resultRef} className="results-section reveal-on-scroll">
                   <ResultCard result={analysisResult} />
                 </div>
               )}
@@ -358,10 +724,11 @@ const App = () => {
           </div>
         </div>
       </section>
+      )}
 
       {/* FOOTER */}
-      <footer className="footer-container">
-        <div className="footer-inner">
+      <footer className="footer-container reveal-on-scroll">
+        <div className="footer-inner reveal-on-scroll">
           <div className="footer-left">
             <h2 className="footer-logo">DeepFake AI</h2>
             <p className="footer-description">Detecting deepfakes with cutting-edge AI technology.</p>
@@ -370,21 +737,21 @@ const App = () => {
           <div className="footer-right">
             <div className="footer-links-group">
               <h4 className="footer-links-title">Product</h4>
-              <a href="#" className="footer-link">Features</a>
-              <a href="#" className="footer-link">Pricing</a>
-              <a href="#" className="footer-link">Updates</a>
+              <button type="button" className="footer-link footer-link-btn" onClick={() => navigateToPage('features')}>Features</button>
+              <button type="button" className="footer-link footer-link-btn" onClick={openAnalyzer}>Analyzer</button>
+              <button type="button" className="footer-link footer-link-btn" onClick={() => navigateToPage('documentation')}>Documentation</button>
             </div>
             <div className="footer-links-group">
               <h4 className="footer-links-title">Company</h4>
-              <a href="#" className="footer-link">About</a>
-              <a href="#" className="footer-link">Careers</a>
-              <a href="#" className="footer-link">Contact</a>
+              <button type="button" className="footer-link footer-link-btn" onClick={() => navigateToPage('about')}>About</button>
+              <button type="button" className="footer-link footer-link-btn" onClick={() => navigateToPage('home')}>Home</button>
+              <button type="button" className="footer-link footer-link-btn" onClick={openAnalyzer}>Contact</button>
             </div>
             <div className="footer-links-group">
               <h4 className="footer-links-title">Resources</h4>
-              <a href="#" className="footer-link">Blog</a>
-              <a href="#" className="footer-link">Help Center</a>
-              <a href="#" className="footer-link">Privacy & Terms</a>
+              <button type="button" className="footer-link footer-link-btn" onClick={() => navigateToPage('documentation')}>Guide</button>
+              <button type="button" className="footer-link footer-link-btn" onClick={() => navigateToPage('features')}>Use Cases</button>
+              <button type="button" className="footer-link footer-link-btn" onClick={() => navigateToPage('about')}>Privacy & Terms</button>
             </div>
           </div>
         </div>
